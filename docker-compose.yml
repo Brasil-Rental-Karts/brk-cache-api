@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      - cache-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - cache-network
+    command: redis-server --appendonly yes
+
+networks:
+  cache-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
