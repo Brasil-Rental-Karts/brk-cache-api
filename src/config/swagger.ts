@@ -7,7 +7,7 @@ const options: swaggerJsdoc.Options = {
     info: {
       title: 'BRK Cache API',
       version,
-      description: 'Fast Redis cache API for club entities',
+      description: 'Fast Redis cache API for multiple entity types (club, event, pilot, ranking, regulation, etc.)',
       license: {
         name: 'ISC',
         url: 'https://opensource.org/licenses/ISC',
@@ -21,21 +21,6 @@ const options: swaggerJsdoc.Options = {
     ],
     components: {
       schemas: {
-        Club: {
-          type: 'object',
-          required: ['id', 'name'],
-          properties: {
-            id: {
-              type: 'string',
-              description: 'Unique identifier for the club',
-            },
-            name: {
-              type: 'string',
-              description: 'Name of the club',
-            },
-            // Add other club properties as needed
-          },
-        },
         Error: {
           type: 'object',
           required: ['error'],
