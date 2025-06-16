@@ -1,7 +1,8 @@
 import redisClient from '../config/redis';
 
 /**
- * Utility functions for Redis operations
+ * High-performance utility functions for Redis Hash operations
+ * Optimized for the new Redis Hash structure from brk-backend
  */
 export class RedisUtils {
   /**
@@ -30,7 +31,224 @@ export class RedisUtils {
   }
   
   /**
-   * Get multiple values from Redis in a single pipeline operation
+   * Get multiple Redis Hashes in a single pipeline operation (ultra-fast)
+   * Optimized for the new Hash structure
+   */
+  public static async getMultipleHashes(keys: string[]): Promise<Record<string, any>[]> {
+    if (keys.length === 0) return [];
+    
+    const pipeline = redisClient.pipeline();
+    keys.forEach(key => pipeline.hgetall(key));
+    
+    const results = await pipeline.exec();
+    if (!results) return [];
+    
+    return results
+      .map((result, index) => {
+        const [err, data] = result as [Error | null, Record<string, string> | null];
+        if (err || !data || Object.keys(data).length === 0) return null;
+        
+        try {
+          // Convert Redis Hash data to proper types
+          const parsed = this.parseHashData(data);
+          // Add key information to help identify the entity
+          parsed._redisKey = keys[index];
+          return parsed;
+        } catch (e) {
+          console.error(`Error parsing Redis Hash data for key ${keys[index]}:`, e);
+          return null;
+        }
+      })
+      .filter(item => item !== null);
+  }
+
+  /**
+   * Get a single Redis Hash (optimized)
+   */
+  public static async getHash(key: string): Promise<Record<string, any> | null> {
+    try {
+      const data = await redisClient.hgetall(key);
+      if (!data || Object.keys(data).length === 0) return null;
+      
+      return this.parseHashData(data);
+    } catch (error) {
+      console.error(`Error getting Redis Hash for key ${key}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all members of a Redis Set (for relationship indexes)
+   */
+  public static async getSetMembers(key: string): Promise<string[]> {
+    try {
+      return await redisClient.smembers(key);
+    } catch (error) {
+      console.error(`Error getting Redis Set members for key ${key}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get multiple sets in parallel using pipeline
+   */
+  public static async getMultipleSets(keys: string[]): Promise<Record<string, string[]>> {
+    if (keys.length === 0) return {};
+    
+    const pipeline = redisClient.pipeline();
+    keys.forEach(key => pipeline.smembers(key));
+    
+    const results = await pipeline.exec();
+    if (!results) return {};
+    
+    const setsData: Record<string, string[]> = {};
+    results.forEach((result, index) => {
+      const [err, data] = result as [Error | null, string[] | null];
+      if (!err && data) {
+        setsData[keys[index]] = data;
+      }
+    });
+    
+    return setsData;
+  }
+
+  /**
+   * Get championship with all its seasons (ultra-fast with 2 network calls)
+   */
+  public static async getChampionshipWithSeasons(championshipId: string): Promise<any> {
+    const championshipKey = `championship:${championshipId}`;
+    const seasonsSetKey = `championship:${championshipId}:seasons`;
+    
+    // First call: Get championship data and season IDs in parallel
+    const pipeline1 = redisClient.pipeline();
+    pipeline1.hgetall(championshipKey);
+    pipeline1.smembers(seasonsSetKey);
+    
+    const results = await pipeline1.exec();
+    if (!results || results.length < 2) return null;
+    
+    const [championshipResult, seasonIdsResult] = results;
+    
+    const [champErr, champData] = championshipResult as [Error | null, Record<string, string>];
+    const [seasonsErr, seasonIds] = seasonIdsResult as [Error | null, string[]];
+    
+    if (champErr || !champData || Object.keys(champData).length === 0) return null;
+    
+    const championship = this.parseHashData(champData);
+    
+    if (seasonsErr || !seasonIds || seasonIds.length === 0) {
+      return { ...championship, seasons: [] };
+    }
+    
+    // Second call: Get all seasons data in parallel
+    const pipeline2 = redisClient.pipeline();
+    seasonIds.forEach(id => pipeline2.hgetall(`season:${id}`));
+    
+    const seasonsResults = await pipeline2.exec();
+    if (!seasonsResults) return { ...championship, seasons: [] };
+    
+    const seasons = seasonsResults
+      .map(result => {
+        const [err, data] = result as [Error | null, Record<string, string>];
+        if (err || !data || Object.keys(data).length === 0) return null;
+        return this.parseHashData(data);
+      })
+      .filter(season => season !== null);
+    
+    return { ...championship, seasons };
+  }
+
+  /**
+   * Get season with all its categories and stages (ultra-fast with 3 network calls)
+   */
+  public static async getSeasonWithCategoriesAndStages(seasonId: string): Promise<any> {
+    const seasonKey = `season:${seasonId}`;
+    const categoriesSetKey = `season:${seasonId}:categories`;
+    const stagesSetKey = `season:${seasonId}:stages`;
+    
+    // First call: Get season data and related IDs in parallel
+    const pipeline1 = redisClient.pipeline();
+    pipeline1.hgetall(seasonKey);
+    pipeline1.smembers(categoriesSetKey);
+    pipeline1.smembers(stagesSetKey);
+    
+    const results = await pipeline1.exec();
+    if (!results || results.length < 3) return null;
+    
+    const [seasonResult, categoryIdsResult, stageIdsResult] = results;
+    
+    if (!seasonResult) return null;
+    
+    const [seasonErr, seasonData] = seasonResult as [Error | null, Record<string, string>];
+    if (seasonErr || !seasonData || Object.keys(seasonData).length === 0) return null;
+    
+    const season = this.parseHashData(seasonData);
+    
+    const [catErr, categoryIds] = categoryIdsResult as [Error | null, string[]];
+    const [stageErr, stageIds] = stageIdsResult as [Error | null, string[]];
+    
+    // Second call: Get categories data if available
+    let categories: any[] = [];
+    if (!catErr && categoryIds && categoryIds.length > 0) {
+      const pipeline2 = redisClient.pipeline();
+      categoryIds.forEach(id => pipeline2.hgetall(`category:${id}`));
+      
+      const categoriesResults = await pipeline2.exec();
+      if (categoriesResults) {
+        categories = categoriesResults
+          .map(result => {
+            const [err, data] = result as [Error | null, Record<string, string>];
+            if (err || !data || Object.keys(data).length === 0) return null;
+            return this.parseHashData(data);
+          })
+          .filter(category => category !== null);
+      }
+    }
+    
+    // Third call: Get stages data if available
+    let stages: any[] = [];
+    if (!stageErr && stageIds && stageIds.length > 0) {
+      const pipeline3 = redisClient.pipeline();
+      stageIds.forEach(id => pipeline3.hgetall(`stage:${id}`));
+      
+      const stagesResults = await pipeline3.exec();
+      if (stagesResults) {
+        stages = stagesResults
+          .map(result => {
+            const [err, data] = result as [Error | null, Record<string, string>];
+            if (err || !data || Object.keys(data).length === 0) return null;
+            return this.parseHashData(data);
+          })
+          .filter(stage => stage !== null);
+      }
+    }
+    
+    return { ...season, categories, stages };
+  }
+
+  /**
+   * Parse Redis Hash data and convert to proper JavaScript types
+   */
+  private static parseHashData(hashData: Record<string, string>): Record<string, any> {
+    const parsed: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(hashData)) {
+      // Convert specific fields to proper types
+      if (key === 'maxPilots' || key === 'minimumAge') {
+        parsed[key] = parseInt(value, 10);
+      } else if (key === 'startDate' || key === 'endDate' || key === 'date') {
+        parsed[key] = new Date(value);
+      } else {
+        parsed[key] = value;
+      }
+    }
+    
+    return parsed;
+  }
+
+  /**
+   * Get multiple values from Redis in a single pipeline operation (legacy support)
+   * @deprecated Use getMultipleHashes for better performance with new Hash structure
    */
   public static async getMultiple(keys: string[]): Promise<Record<string, any>[]> {
     if (keys.length === 0) return [];

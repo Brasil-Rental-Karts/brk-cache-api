@@ -32,7 +32,7 @@ app.use('/api', routes);
 
 /**
  * @swagger
- * /health:
+ * /api/health:
  *   get:
  *     summary: Check API health status
  *     description: Returns health information about the API and its dependencies
@@ -45,7 +45,7 @@ app.use('/api', routes);
  *             schema:
  *               $ref: '#/components/schemas/HealthCheck'
  */
-app.get('/health', async (req, res) => {
+app.get('/api/health', async (req, res) => {
   const redisHealth = await RedisUtils.healthCheck();
   const uptime = process.uptime();
   
