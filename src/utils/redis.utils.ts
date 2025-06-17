@@ -238,6 +238,14 @@ export class RedisUtils {
         parsed[key] = parseInt(value, 10);
       } else if (key === 'startDate' || key === 'endDate' || key === 'date') {
         parsed[key] = new Date(value);
+      } else if (key === 'sponsors') {
+        // Parse sponsors JSON string
+        try {
+          parsed[key] = value ? JSON.parse(value) : [];
+        } catch (e) {
+          console.error('Error parsing sponsors JSON:', e);
+          parsed[key] = [];
+        }
       } else {
         parsed[key] = value;
       }
