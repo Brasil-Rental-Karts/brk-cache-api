@@ -59,6 +59,10 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+app.get('/health', (req, res) => {
+  res.redirect(301, '/api/health');
+});
+
 // 404 handler
 app.use(notFoundHandler);
 
