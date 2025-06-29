@@ -159,23 +159,25 @@ export class RedisUtils {
   }
 
   /**
-   * Get season with all its categories and stages (ultra-fast with 3 network calls)
+   * Get season with all its categories, stages and regulations (ultra-fast with 4 network calls)
    */
-  public static async getSeasonWithCategoriesAndStages(seasonId: string): Promise<any> {
+  public static async getSeasonWithCategoriesStagesAndRegulations(seasonId: string): Promise<any> {
     const seasonKey = `season:${seasonId}`;
     const categoriesSetKey = `season:${seasonId}:categories`;
     const stagesSetKey = `season:${seasonId}:stages`;
+    const regulationsSetKey = `season:${seasonId}:regulations`;
     
-    // First call: Get season data and related IDs in parallel
+    // First call: Get season data and all related IDs in parallel
     const pipeline1 = redisClient.pipeline();
     pipeline1.hgetall(seasonKey);
     pipeline1.smembers(categoriesSetKey);
     pipeline1.smembers(stagesSetKey);
+    pipeline1.smembers(regulationsSetKey);
     
     const results = await pipeline1.exec();
-    if (!results || results.length < 3) return null;
+    if (!results || results.length < 4) return null;
     
-    const [seasonResult, categoryIdsResult, stageIdsResult] = results;
+    const [seasonResult, categoryIdsResult, stageIdsResult, regulationIdsResult] = results;
     
     if (!seasonResult) return null;
     
@@ -186,6 +188,7 @@ export class RedisUtils {
     
     const [catErr, categoryIds] = categoryIdsResult as [Error | null, string[]];
     const [stageErr, stageIds] = stageIdsResult as [Error | null, string[]];
+    const [regErr, regulationIds] = regulationIdsResult as [Error | null, string[]];
     
     // Second call: Get categories data if available
     let categories: any[] = [];
@@ -223,7 +226,56 @@ export class RedisUtils {
       }
     }
     
-    return { ...season, categories, stages };
+    // Fourth call: Get regulations data if available
+    let regulations: any[] = [];
+    if (!regErr && regulationIds && regulationIds.length > 0) {
+      const pipeline4 = redisClient.pipeline();
+      regulationIds.forEach(id => pipeline4.hgetall(`regulation:${id}`));
+      
+      const regulationsResults = await pipeline4.exec();
+      if (regulationsResults) {
+        regulations = regulationsResults
+          .map(result => {
+            const [err, data] = result as [Error | null, Record<string, string>];
+            if (err || !data || Object.keys(data).length === 0) return null;
+            return this.parseHashData(data);
+          })
+          .filter(regulation => regulation !== null)
+          .sort((a, b) => (a.order || 0) - (b.order || 0)); // Sort by order
+      }
+    }
+    
+    return { ...season, categories, stages, regulations };
+  }
+
+  /**
+   * Get all regulations for a season (optimized)
+   */
+  public static async getSeasonRegulations(seasonId: string): Promise<any[]> {
+    try {
+      const regulationIds = await redisClient.smembers(`season:${seasonId}:regulations`);
+      if (!regulationIds || regulationIds.length === 0) return [];
+      
+      const pipeline = redisClient.pipeline();
+      regulationIds.forEach(id => pipeline.hgetall(`regulation:${id}`));
+      
+      const results = await pipeline.exec();
+      if (!results) return [];
+      
+      const regulations = results
+        .map(result => {
+          const [err, data] = result as [Error | null, Record<string, string>];
+          if (err || !data || Object.keys(data).length === 0) return null;
+          return this.parseHashData(data);
+        })
+        .filter(regulation => regulation !== null)
+        .sort((a, b) => (a.order || 0) - (b.order || 0)); // Sort by order
+      
+      return regulations;
+    } catch (error) {
+      console.error(`Error getting regulations for season ${seasonId}:`, error);
+      return [];
+    }
   }
 
   /**

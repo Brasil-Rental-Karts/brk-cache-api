@@ -232,7 +232,7 @@ router.get('/seasons/:id', async (req, res) => {
 router.get('/seasons/:id/complete', async (req, res) => {
   const { id } = req.params;
   try {
-    const completeSeasonData = await RedisUtils.getSeasonWithCategoriesAndStages(id);
+    const completeSeasonData = await RedisUtils.getSeasonWithCategoriesStagesAndRegulations(id);
     if (!completeSeasonData) {
       return res.status(404).json({ error: 'Season not found' });
     }
@@ -319,6 +319,89 @@ router.get('/stages', async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch stages', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/regulations:
+ *   get:
+ *     summary: Get all regulations from cache
+ *     description: Returns all regulations using optimized Redis Hash operations
+ *     tags: [Regulations]
+ *     responses:
+ *       200:
+ *         description: List of regulations
+ */
+router.get('/regulations', async (req, res) => {
+  try {
+    const regulationIds = await RedisUtils.getSetMembers('regulations:all');
+    if (!regulationIds.length) {
+      return res.json({ count: 0, data: [] });
+    }
+    
+    const regulationKeys = regulationIds.map(id => `regulation:${id}`);
+    const regulations = await RedisUtils.getMultipleHashes(regulationKeys);
+    
+    res.json({ 
+      count: regulations.length, 
+      data: regulations,
+      performance: {
+        networkCalls: 2,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch regulations', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/seasons/{id}/regulations:
+ *   get:
+ *     summary: Get all regulations for a specific season
+ *     description: Returns all regulations for a season using optimized Redis Hash operations
+ *     tags: [Regulations]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Season ID
+ *     responses:
+ *       200:
+ *         description: List of regulations for the season
+ *       404:
+ *         description: Season not found
+ */
+router.get('/seasons/:id/regulations', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const regulationIds = await RedisUtils.getSetMembers(`season:${id}:regulations`);
+    if (!regulationIds.length) {
+      return res.json({ count: 0, data: [] });
+    }
+    
+    const regulationKeys = regulationIds.map(regId => `regulation:${regId}`);
+    const regulations = await RedisUtils.getMultipleHashes(regulationKeys);
+    
+    // Sort by order
+    const sortedRegulations = regulations.sort((a, b) => (a.order || 0) - (b.order || 0));
+    
+    res.json({ 
+      count: sortedRegulations.length, 
+      data: sortedRegulations,
+      performance: {
+        networkCalls: 2,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch season regulations', details: message });
   }
 });
 
