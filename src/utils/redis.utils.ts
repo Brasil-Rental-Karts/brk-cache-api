@@ -298,6 +298,9 @@ export class RedisUtils {
           console.error('Error parsing sponsors JSON:', e);
           parsed[key] = [];
         }
+      } else if (key === 'regulationsEnabled') {
+        // Parse boolean (accepts 'true', 'false', 1, 0, or undefined)
+        parsed[key] = value === 'true' || value === '1';
       } else {
         parsed[key] = value;
       }
