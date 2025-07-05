@@ -407,6 +407,120 @@ router.get('/seasons/:id/regulations', async (req, res) => {
 
 /**
  * @swagger
+ * /cache/raceTracks:
+ *   get:
+ *     summary: Get all race tracks from cache
+ *     description: Returns all race tracks using optimized Redis Hash operations
+ *     tags: [RaceTracks]
+ *     responses:
+ *       200:
+ *         description: List of race tracks
+ */
+router.get('/raceTracks', async (req, res) => {
+  try {
+    const raceTrackIds = await RedisUtils.getSetMembers('raceTracks:all');
+    if (!raceTrackIds.length) {
+      return res.json({ count: 0, data: [] });
+    }
+    
+    const raceTrackKeys = raceTrackIds.map(id => `raceTrack:${id}`);
+    const raceTracks = await RedisUtils.getMultipleHashes(raceTrackKeys);
+    
+    res.json({ 
+      count: raceTracks.length, 
+      data: raceTracks,
+      performance: {
+        networkCalls: 2,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch race tracks', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/raceTracks/{id}:
+ *   get:
+ *     summary: Get a specific race track by ID
+ *     description: Returns race track data using optimized Redis Hash operations
+ *     tags: [RaceTracks]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Race Track ID
+ *     responses:
+ *       200:
+ *         description: Race track data
+ *       404:
+ *         description: Race track not found
+ */
+router.get('/raceTracks/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const raceTrack = await RedisUtils.getHash(`raceTrack:${id}`);
+    if (!raceTrack) {
+      return res.status(404).json({ error: 'Race track not found' });
+    }
+    
+    res.json({
+      data: raceTrack,
+      performance: {
+        networkCalls: 1,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch race track', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/raceTracks/active:
+ *   get:
+ *     summary: Get all active race tracks from cache
+ *     description: Returns all active race tracks using optimized Redis Hash operations
+ *     tags: [RaceTracks]
+ *     responses:
+ *       200:
+ *         description: List of active race tracks
+ */
+router.get('/raceTracks/active', async (req, res) => {
+  try {
+    const raceTrackIds = await RedisUtils.getSetMembers('raceTracks:all');
+    if (!raceTrackIds.length) {
+      return res.json({ count: 0, data: [] });
+    }
+    
+    const raceTrackKeys = raceTrackIds.map(id => `raceTrack:${id}`);
+    const raceTracks = await RedisUtils.getMultipleHashes(raceTrackKeys);
+    
+    // Filter only active race tracks
+    const activeRaceTracks = raceTracks.filter(raceTrack => raceTrack.isActive === true);
+    
+    res.json({ 
+      count: activeRaceTracks.length, 
+      data: activeRaceTracks,
+      performance: {
+        networkCalls: 2,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch active race tracks', details: message });
+  }
+});
+
+/**
+ * @swagger
  * /cache/{prefix}:
  *   get:
  *     summary: Fetch all data for a given key prefix from Redis (Legacy)

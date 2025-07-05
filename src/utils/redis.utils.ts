@@ -279,6 +279,61 @@ export class RedisUtils {
   }
 
   /**
+   * Get all race tracks from cache (optimized)
+   */
+  public static async getAllRaceTracks(): Promise<any[]> {
+    try {
+      const raceTrackIds = await redisClient.smembers('raceTracks:all');
+      if (!raceTrackIds || raceTrackIds.length === 0) return [];
+      
+      const pipeline = redisClient.pipeline();
+      raceTrackIds.forEach(id => pipeline.hgetall(`raceTrack:${id}`));
+      
+      const results = await pipeline.exec();
+      if (!results) return [];
+      
+      const raceTracks = results
+        .map(result => {
+          const [err, data] = result as [Error | null, Record<string, string>];
+          if (err || !data || Object.keys(data).length === 0) return null;
+          return this.parseHashData(data);
+        })
+        .filter(raceTrack => raceTrack !== null);
+      
+      return raceTracks;
+    } catch (error) {
+      console.error('Error getting all race tracks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get active race tracks from cache (optimized)
+   */
+  public static async getActiveRaceTracks(): Promise<any[]> {
+    try {
+      const allRaceTracks = await this.getAllRaceTracks();
+      return allRaceTracks.filter(raceTrack => raceTrack.isActive === true);
+    } catch (error) {
+      console.error('Error getting active race tracks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific race track by ID (optimized)
+   */
+  public static async getRaceTrackById(id: string): Promise<any | null> {
+    try {
+      const raceTrack = await this.getHash(`raceTrack:${id}`);
+      return raceTrack;
+    } catch (error) {
+      console.error(`Error getting race track ${id}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Parse Redis Hash data and convert to proper JavaScript types
    */
   private static parseHashData(hashData: Record<string, string>): Record<string, any> {
@@ -286,19 +341,19 @@ export class RedisUtils {
     
     for (const [key, value] of Object.entries(hashData)) {
       // Convert specific fields to proper types
-      if (key === 'maxPilots' || key === 'minimumAge') {
+      if (key === 'maxPilots' || key === 'minimumAge' || key === 'ballast') {
         parsed[key] = parseInt(value, 10);
-      } else if (key === 'startDate' || key === 'endDate' || key === 'date') {
+      } else if (key === 'startDate' || key === 'endDate' || key === 'date' || key === 'createdAt' || key === 'updatedAt') {
         parsed[key] = new Date(value);
-      } else if (key === 'sponsors') {
-        // Parse sponsors JSON string
+      } else if (key === 'sponsors' || key === 'trackLayouts' || key === 'defaultFleets' || key === 'generalInfo') {
+        // Parse JSON string fields
         try {
           parsed[key] = value ? JSON.parse(value) : [];
         } catch (e) {
-          console.error('Error parsing sponsors JSON:', e);
+          console.error(`Error parsing JSON for field ${key}:`, e);
           parsed[key] = [];
         }
-      } else if (key === 'regulationsEnabled') {
+      } else if (key === 'regulationsEnabled' || key === 'isActive') {
         // Parse boolean (accepts 'true', 'false', 1, 0, or undefined)
         parsed[key] = value === 'true' || value === '1';
       } else {
