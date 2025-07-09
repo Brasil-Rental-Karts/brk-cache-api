@@ -345,8 +345,8 @@ export class RedisUtils {
         parsed[key] = parseInt(value, 10);
       } else if (key === 'startDate' || key === 'endDate' || key === 'date' || key === 'createdAt' || key === 'updatedAt') {
         parsed[key] = new Date(value);
-      } else if (key === 'sponsors' || key === 'trackLayouts' || key === 'defaultFleets' || key === 'generalInfo') {
-        // Parse JSON string fields
+      } else if (key === 'sponsors' || key === 'trackLayouts' || key === 'defaultFleets' || key === 'generalInfo' || key === 'pilots') {
+        // Parse JSON string fields (including pilots)
         try {
           parsed[key] = value ? JSON.parse(value) : [];
         } catch (e) {

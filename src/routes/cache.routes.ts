@@ -521,6 +521,94 @@ router.get('/raceTracks/active', async (req, res) => {
 
 /**
  * @swagger
+ * /cache/users/{id}:
+ *   get:
+ *     summary: Get a specific user by ID
+ *     description: Returns user data using optimized Redis Hash operations
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User data
+ *       404:
+ *         description: User not found
+ */
+router.get('/users/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await RedisUtils.getHash(`user:${id}`);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      data: user,
+      performance: {
+        networkCalls: 1,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch user', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/users/batch:
+ *   post:
+ *     summary: Get multiple users by IDs
+ *     description: Returns multiple users data using optimized Redis Hash operations
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of user IDs
+ *     responses:
+ *       200:
+ *         description: List of users data
+ */
+router.post('/users/batch', async (req, res) => {
+  const { userIds } = req.body;
+  if (!Array.isArray(userIds)) {
+    return res.status(400).json({ error: 'userIds must be an array' });
+  }
+  
+  try {
+    const userKeys = userIds.map(id => `user:${id}`);
+    const users = await RedisUtils.getMultipleHashes(userKeys);
+    
+    res.json({ 
+      count: users.length, 
+      data: users,
+      performance: {
+        networkCalls: 2,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch users', details: message });
+  }
+});
+
+/**
+ * @swagger
  * /cache/{prefix}:
  *   get:
  *     summary: Fetch all data for a given key prefix from Redis (Legacy)
