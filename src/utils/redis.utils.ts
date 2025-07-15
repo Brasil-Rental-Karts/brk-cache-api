@@ -334,6 +334,31 @@ export class RedisUtils {
   }
 
   /**
+   * Get stage details with results (optimized)
+   */
+  public static async getStageWithResults(stageId: string): Promise<any | null> {
+    try {
+      const stage = await this.getHash(`stage:${stageId}`);
+      if (!stage) return null;
+      
+      // Parse stageResults if it exists
+      if (stage.stageResults) {
+        try {
+          stage.stageResults = JSON.parse(stage.stageResults);
+        } catch (e) {
+          console.error(`Error parsing stageResults for stage ${stageId}:`, e);
+          stage.stageResults = null;
+        }
+      }
+      
+      return stage;
+    } catch (error) {
+      console.error(`Error getting stage ${stageId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Get season classification data (optimized)
    */
   public static async getSeasonClassification(seasonId: string): Promise<any | null> {

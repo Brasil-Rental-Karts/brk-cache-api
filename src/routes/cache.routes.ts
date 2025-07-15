@@ -324,6 +324,47 @@ router.get('/stages', async (req, res) => {
 
 /**
  * @swagger
+ * /cache/stages/{id}:
+ *   get:
+ *     summary: Get a specific stage by ID with results
+ *     description: Returns stage data with race results using optimized Redis Hash operations
+ *     tags: [Stages]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Stage ID
+ *     responses:
+ *       200:
+ *         description: Stage data with results
+ *       404:
+ *         description: Stage not found
+ */
+router.get('/stages/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const stage = await RedisUtils.getStageWithResults(id);
+    if (!stage) {
+      return res.status(404).json({ error: 'Stage not found' });
+    }
+    
+    res.json({
+      data: stage,
+      performance: {
+        networkCalls: 1,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch stage', details: message });
+  }
+});
+
+/**
+ * @swagger
  * /cache/regulations:
  *   get:
  *     summary: Get all regulations from cache
