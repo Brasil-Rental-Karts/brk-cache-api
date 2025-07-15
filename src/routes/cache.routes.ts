@@ -407,6 +407,89 @@ router.get('/seasons/:id/regulations', async (req, res) => {
 
 /**
  * @swagger
+ * /cache/seasons/{id}/classification:
+ *   get:
+ *     summary: Get season classification data
+ *     description: Returns classification data for a specific season using optimized Redis Hash operations
+ *     tags: [Classifications]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Season ID
+ *     responses:
+ *       200:
+ *         description: Season classification data
+ *       404:
+ *         description: Season not found
+ */
+router.get('/seasons/:id/classification', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const classification = await RedisUtils.getSeasonClassification(id);
+    if (!classification) {
+      return res.status(404).json({ error: 'Season classification not found' });
+    }
+    
+    res.json({
+      data: classification,
+      performance: {
+        networkCalls: 1,
+        optimized: true
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch season classification', details: message });
+  }
+});
+
+/**
+ * @swagger
+ * /cache/championships/{id}/classification:
+ *   get:
+ *     summary: Get championship classification data for all seasons
+ *     description: Returns classification data for all seasons of a championship using optimized Redis Hash operations
+ *     tags: [Classifications]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Championship ID
+ *     responses:
+ *       200:
+ *         description: Championship classification data
+ *       404:
+ *         description: Championship not found
+ */
+router.get('/championships/:id/classification', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const championshipClassification = await RedisUtils.getChampionshipClassification(id);
+    if (!championshipClassification.championship) {
+      return res.status(404).json({ error: 'Championship not found' });
+    }
+    
+    res.json({
+      data: championshipClassification,
+      performance: {
+        networkCalls: 2,
+        optimized: true,
+        seasonsCount: championshipClassification.classifications.length
+      }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch championship classification', details: message });
+  }
+});
+
+/**
+ * @swagger
  * /cache/raceTracks:
  *   get:
  *     summary: Get all race tracks from cache

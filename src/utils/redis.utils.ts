@@ -334,6 +334,65 @@ export class RedisUtils {
   }
 
   /**
+   * Get season classification data (optimized)
+   */
+  public static async getSeasonClassification(seasonId: string): Promise<any | null> {
+    try {
+      const season = await this.getHash(`season:${seasonId}`);
+      if (!season) return null;
+      
+      // Check if classification data exists in the season hash
+      if (season.classification) {
+        return season.classification;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error getting classification for season ${seasonId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get championship classification data for all seasons (optimized)
+   */
+  public static async getChampionshipClassification(championshipId: string): Promise<any> {
+    try {
+      // Get championship with seasons
+      const championshipWithSeasons = await this.getChampionshipWithSeasons(championshipId);
+      if (!championshipWithSeasons || !championshipWithSeasons.seasons) {
+        return { championship: null, classifications: [] };
+      }
+      
+      // Get classification data for all seasons in parallel
+      const seasonKeys = championshipWithSeasons.seasons.map((season: any) => `season:${season.id}`);
+      const seasonsWithClassification = await this.getMultipleHashes(seasonKeys);
+      
+      const classifications = seasonsWithClassification
+        .map(season => {
+          if (season.classification) {
+            return {
+              seasonId: season.id,
+              seasonName: season.name,
+              seasonYear: season.year,
+              classification: season.classification
+            };
+          }
+          return null;
+        })
+        .filter(classification => classification !== null);
+      
+      return {
+        championship: championshipWithSeasons,
+        classifications
+      };
+    } catch (error) {
+      console.error(`Error getting championship classification for ${championshipId}:`, error);
+      return { championship: null, classifications: [] };
+    }
+  }
+
+  /**
    * Parse Redis Hash data and convert to proper JavaScript types
    */
   private static parseHashData(hashData: Record<string, string>): Record<string, any> {
@@ -345,13 +404,13 @@ export class RedisUtils {
         parsed[key] = parseInt(value, 10);
       } else if (key === 'startDate' || key === 'endDate' || key === 'date' || key === 'createdAt' || key === 'updatedAt') {
         parsed[key] = new Date(value);
-      } else if (key === 'sponsors' || key === 'trackLayouts' || key === 'defaultFleets' || key === 'generalInfo' || key === 'pilots') {
-        // Parse JSON string fields (including pilots)
+      } else if (key === 'sponsors' || key === 'trackLayouts' || key === 'defaultFleets' || key === 'generalInfo' || key === 'pilots' || key === 'classification') {
+        // Parse JSON string fields (including pilots and classification)
         try {
-          parsed[key] = value ? JSON.parse(value) : [];
+          parsed[key] = value ? JSON.parse(value) : (key === 'classification' ? null : []);
         } catch (e) {
           console.error(`Error parsing JSON for field ${key}:`, e);
-          parsed[key] = [];
+          parsed[key] = key === 'classification' ? null : [];
         }
       } else if (key === 'regulationsEnabled' || key === 'isActive') {
         // Parse boolean (accepts 'true', 'false', 1, 0, or undefined)
